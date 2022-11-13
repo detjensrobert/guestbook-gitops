@@ -19,10 +19,8 @@ name: Build and Push an Image to ECR
 env:
   AWS_DEFAULT_REGION: us-west-2
   AWS_DEFAULT_OUTPUT: json
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  CONTAINER_IMAGE: guestbook:${{ github.sha }}
+  ECR_REPOSITORY: guestbook
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   build-and-push:
@@ -34,32 +32,43 @@ jobs:
 
       # Add steps here like linting, testing, minification, etc.
 
-      - name: Setup ECR
-        run: |
-          # Login to AWS ECR
-          which aws
-          apt update && apt install awscli
-          which aws
-          $( aws ecr get-login --no-include-email )
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
       - name: Build and tag the image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           # Build and tag the image
           docker build \
-            -t $CONTAINER_IMAGE \
-            -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$CONTAINER_IMAGE ./php-redis
+            -t $ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./php-redis
 
       # Set image tag in kustomization
 
       - name: Set image tag
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd deploy
-          kustomize edit set image $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$CONTAINER_IMAGE
+          kustomize edit set image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           cat kustomization.yaml
       - name: Commit kustomization
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git commit -a -m "$CONTAINER_IMAGE"
+          git commit -a -m "$ECR_REPOSITORY:$IMAGE_TAG"
       - name: Push changes to master
         uses: ad-m/github-push-action@master
         with:
@@ -72,6 +81,8 @@ jobs:
       # Only push to registry on master
       - name: Push
         if: github.ref == 'refs/heads/master'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           # Push image to AWS ECR
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$CONTAINER_IMAGE
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
