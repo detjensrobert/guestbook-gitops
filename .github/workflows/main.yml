@@ -19,7 +19,7 @@ name: Build and Push an Image to ECR
 env:
   AWS_DEFAULT_REGION: us-west-2
   AWS_DEFAULT_OUTPUT: json
-  ECR_REPOSITORY: guestbook
+  ECR_REPOSITORY: gitops-test-guestbook
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
