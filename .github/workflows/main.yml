@@ -66,7 +66,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd deploy
-          kustomize edit set image $ECR_REGISTRY/$IMAGE_TAG
+          kustomize edit set image $ECR_REGISTRY/$IMAGE_NAME:${{ github.sha }}
           cat kustomization.yaml
       - name: Commit kustomization
         env:
@@ -74,7 +74,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git commit -a -m "$IMAGE_TAG"
+          git commit -a -m "$IMAGE_NAME:${{ github.sha }}"
       - name: Push changes to master
         uses: ad-m/github-push-action@master
         with:
