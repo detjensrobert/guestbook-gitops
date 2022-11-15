@@ -17,10 +17,8 @@ name: Build and Push an Image to ECR
 
 # https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
 env:
-  AWS_DEFAULT_REGION: us-west-2
   AWS_DEFAULT_OUTPUT: json
-  ECR_REPOSITORY: gitops-test-guestbook
-  IMAGE_TAG: ${{ github.sha }}
+  IMAGE_NAME: guestbook
 
 jobs:
   build-and-push:
@@ -42,18 +40,24 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-        with:
-          registry-type: public
 
-      - name: Build and tag the image
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          # Build and tag the image
-          docker build \
-            -t $ECR_REPOSITORY:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./php-redis
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
+            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ github.short_ref }}
+      - name: Build and push
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          context: ./php-redis
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
 
       # Set image tag in kustomization
 
@@ -62,7 +66,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd deploy
-          kustomize edit set image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          kustomize edit set image $ECR_REGISTRY/$IMAGE_TAG
           cat kustomization.yaml
       - name: Commit kustomization
         env:
@@ -70,7 +74,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git commit -a -m "$ECR_REPOSITORY:$IMAGE_TAG"
+          git commit -a -m "$IMAGE_TAG"
       - name: Push changes to master
         uses: ad-m/github-push-action@master
         with:
@@ -87,4 +91,4 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           # Push image to AWS ECR
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$IMAGE_TAG
